@@ -164,7 +164,7 @@ If you build on this work, you can cite the report as:
                   via Cascaded Vision-Language Verification},
   year         = {2026},
   howpublished = {LUMS CS437/CS5317/EE414/EE513 Spring 2026 Project Report},
-  url          = {https://github.com/<USERNAME>/dl-forest-fire-detection}
+  url          = {https://github.com/27100340/dl-forest-fire-detection.git}
 }
 ```
 
