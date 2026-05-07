@@ -1,0 +1,336 @@
+\documentclass[11pt,twocolumn]{article}
+
+% -------------------------------------------------------
+% PACKAGES
+% -------------------------------------------------------
+\usepackage[margin=1in]{geometry}
+\usepackage{microtype}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage{abstract}
+\usepackage{fancyhdr}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{times}
+\usepackage{xcolor}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{array}
+\usepackage{parskip}
+
+% -------------------------------------------------------
+% PAGE STYLE
+% -------------------------------------------------------
+\pagestyle{fancy}
+\fancyhf{}
+\rhead{\small CS437/CS5317/EE414/EE513 --- Deep Learning, Spring 2026}
+\lhead{\small SOA Survey}
+\rfoot{\small \thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+% -------------------------------------------------------
+% TITLE FORMATTING
+% -------------------------------------------------------
+\titleformat{\section}
+  {\large\bfseries}{\thesection.}{0.5em}{}[\titlerule]
+\titleformat{\subsection}
+  {\normalsize\bfseries}{\thesubsection.}{0.5em}{}
+
+% -------------------------------------------------------
+% ABSTRACT FORMATTING
+% -------------------------------------------------------
+\renewcommand{\abstractnamefont}{\normalfont\bfseries}
+\renewcommand{\abstracttextfont}{\normalfont\small}
+\setlength{\absleftindent}{0pt}
+\setlength{\absrightindent}{0pt}
+
+% -------------------------------------------------------
+% HYPERLINK STYLING
+% -------------------------------------------------------
+\hypersetup{
+    colorlinks=true,
+    linkcolor=black,
+    citecolor=black,
+    urlcolor=blue
+}
+
+% -------------------------------------------------------
+% TITLE BLOCK
+% -------------------------------------------------------
+\title{
+    \vspace{-1cm}
+    {\large \textbf{SOA Survey}} \\[0.3em]
+    {\LARGE Reducing False Positives in Real-Time Forest Fire and Smoke Detection via Semantic Verification} \\[0.5em]
+    {\normalsize CS437/CS5317/EE414/EE513 --- Deep Learning, Spring 2026}
+}
+
+\author{
+    Muhammad Baqir Hassan Babar (27100340) \quad Momin Fahed Khan (27100082)
+}
+
+\date{}
+
+% -------------------------------------------------------
+\begin{document}
+
+\maketitle
+\thispagestyle{fancy}
+
+% -------------------------------------------------------
+\begin{abstract}
+Forest fires cause severe ecological and economic damage, and early detection of fire and smoke from camera feeds is critical for timely intervention. This survey reviews 12 papers spanning CNN-based fire detection, YOLO-family real-time detectors, temporal models (LSTM), hybrid CNN--Transformer architectures, semi-supervised methods, and spectral-pattern approaches for smoke classification. Across all reviewed methods, a recurring and under-addressed limitation is the high false positive rate in real-world deployment: detectors consistently confuse smoke with fog, clouds, and haze, and misclassify sunlight or bright reflections as fire. No existing work combines a real-time object detector with a vision-language model for post-detection semantic verification to systematically suppress these false alarms. We propose to investigate a hybrid pipeline coupling YOLOv8 with CLIP-based semantic filtering, evaluated on the D-Fire and FASDD benchmarks and a custom PTZ camera dataset, targeting measurable false positive reduction while preserving real-time edge-deployable inference.
+\end{abstract}
+
+% -------------------------------------------------------
+\section{Problem Definition}
+\label{sec:problem}
+
+Forest fires rank among the most destructive natural disasters globally. Between 2002 and 2016 an estimated 4.2 million km$^2$ of land was burned due to wildfires~\cite{detectron2fire}, and single incidents routinely displace thousands of people, destroy infrastructure, and release massive quantities of carbon. Early detection---ideally at the initial smoke stage before open flame develops---is the primary lever for minimizing damage, because suppression success is strongly correlated with response time~\cite{bilstm_smoke}.
+
+The task addressed in this survey is the automated detection and localization of fire and smoke in RGB images and video streams captured by Pan-Tilt-Zoom (PTZ) cameras deployed in forest areas, in collaboration with WWF. Depending on the methodology, the output may be image-level classification labels, axis-aligned bounding boxes, or segmentation masks delineating fire and smoke regions. The system must operate in real time (inference latency $<$100\,ms per frame) and be deployable on edge hardware such as NVIDIA Jetson or Raspberry Pi.
+
+From a deep learning standpoint, this problem is hard for three interrelated reasons. First, early-stage smoke is visually subtle---low contrast, diffuse, semi-transparent---and shares spatial and spectral characteristics with fog, clouds, haze, and dust, making it a prime source of false positives~\cite{spectral_smoke, cnn_vit_smoke}. Second, real-time inference on edge devices imposes strict computational budgets, forcing a trade-off between model capacity and speed that most high-accuracy architectures (e.g., two-stage detectors, large transformers) cannot satisfy~\cite{cnn_fire_detection}. Third, existing fire and smoke datasets are small, biased toward well-developed fires, and lack systematic representation of confounding visual phenomena (fog, sunlight reflections, dust), which limits the generalization of trained models to real-world PTZ deployments~\cite{firematch}.
+
+% -------------------------------------------------------
+\section{Literature Review}
+\label{sec:litreview}
+
+\subsection{Challenge 1: Distinguishing Smoke from Visually Similar Phenomena}
+
+The dominant failure mode in deployed fire detection systems is the false positive: models confidently classify fog, haze, clouds, dust, and steam as smoke, or classify sunlight reflections, orange-tinted surfaces, and vehicle headlights as fire. This problem is documented across virtually every method surveyed.
+
+Li and Zhao~\cite{cnn_fire_detection} benchmarked Faster R-CNN, R-FCN, SSD, and YOLOv3 on a custom fire dataset containing annotated disturbance objects (fire-like and smoke-like non-fire elements). While YOLOv3 achieved the highest mAP of 83.7\% and 28 FPS, the authors explicitly annotated background disturbances including luminosity and smoke-like patterns, acknowledging that all four detectors still produced false detections when scenes contained strong ambient light or moving haze. The dataset itself included a ``difficult'' field and a ``disturbance'' annotation for each image, indicating how pervasive the problem is.
+
+Abdusalomov et al.~\cite{detectron2fire} achieved 99.3\% precision using Detectron2 (Mask R-CNN) on a large custom dataset of 348,600 augmented images. A key insight is that including 13,800 non-fire images depicting sunlight under different forest weather conditions was essential for reducing false alarms---sunlight was identified as the single most destructive source of false positives. Despite this, the model still struggled with small distant fires, and the approach lacks any semantic reasoning about what the detected region actually represents.
+
+Zheng et al.~\cite{cnn_vit_smoke} proposed SR-Net, combining CNN feature extraction with a Lightweight Vision Transformer for satellite-based smoke classification. The model achieved 96.9\% accuracy on a 4,000-image Himawari-8 satellite dataset, outperforming MobileNet, GoogLeNet, ResNet50, and AlexNet. Grad-CAM analysis showed that SR-Net's attention occasionally shifted away from smoke when point-like clouds were present in the scene, confirming that even transformer-augmented architectures do not fully resolve the smoke-vs-cloud confusion.
+
+Zhao et al.~\cite{spectral_smoke} addressed the smoke--cloud confusion from a spectral perspective, introducing the InAmp module that learns class-specific spectral patterns from multi-spectral satellite imagery. On the Landsat\_Smk dataset, InAmp improved VIB\_SD accuracy from 81.79\% to 85.33\% and reduced false negatives from 24.26\% to 13.97\%. However, this approach is limited to multi-spectral satellite data and cannot be directly applied to single-sensor RGB cameras, which is the modality used in PTZ-based forest monitoring.
+
+What none of these methods provide is a semantic reasoning layer---a mechanism that can determine, after a region is flagged as potential smoke, whether that region's visual context is consistent with actual smoke versus a confounding phenomenon. Vision-language models such as CLIP~\cite{clip} offer precisely this capability but have not been integrated into fire detection pipelines.
+
+\subsection{Challenge 2: Real-Time Detection Under Computational Constraints}
+
+Edge deployment demands models that balance accuracy with inference speed on hardware with limited GPU memory and compute throughput. This tension is central to the architecture selection problem.
+
+The YOLOv3-based detector in Li and Zhao~\cite{cnn_fire_detection} achieved 28 FPS, meeting real-time requirements, while the two-stage Faster R-CNN was substantially slower. Madhukara and Reddy~\cite{yolov8_smartcity} demonstrated YOLOv8 for smart-city fire detection, reporting 97.1\% precision across all classes and real-time performance suitable for embedded systems. However, neither work incorporated any post-detection verification step, meaning that improving false positive rates would require a larger and more costly primary detector---directly conflicting with the edge-deployment constraint.
+
+The Detectron2-based approach of Abdusalomov et al.~\cite{detectron2fire} deployed on Raspberry Pi 3B+ and noted that the model responds faster in small CNNs than large ones, highlighting the practical tension. Mask R-CNN (186 MB weights, 89 hours of training on RTX 3090) is not naturally suited to edge devices without significant optimization.
+
+The ABi-LSTM model of Cao et al.~\cite{bilstm_smoke} processes video sequences for temporal smoke recognition. While achieving 97.8\% accuracy with a 4.4\% improvement over image-based models, the Inception V3 + BiLSTM pipeline has substantially higher per-frame latency than single-shot detectors, making it unsuitable as a primary detector for real-time systems but potentially useful as a secondary verification channel.
+
+A lightweight semantic verification module (e.g., a distilled CLIP encoder) applied only to detected regions rather than full frames could add semantic discrimination without proportionally increasing inference cost---this architectural insight motivates our proposed direction.
+
+\subsection{Challenge 3: Early-Stage Smoke Detection with Weak Visual Cues}
+
+Early forest fire smoke is faint, slowly dispersing, and lacks the salient textures and colors of developed flames. Detecting it requires exploiting subtle temporal and spatial patterns that challenge standard single-frame detectors.
+
+Cao et al.~\cite{bilstm_smoke} proposed ABi-LSTM, combining Inception V3 spatial features with a Bidirectional LSTM and temporal attention mechanism. The model captures discriminative spatiotemporal features from image patch sequences, paying different attention weights to different temporal frames. This yielded 97.8\% accuracy on a PTZ-camera-based forest smoke dataset with fewer false alarms than image-only baselines. However, the model is limited to classification of pre-extracted patches and does not output bounding boxes or segmentation masks for integration into an end-to-end detection pipeline.
+
+Lin et al.~\cite{firematch} tackled the labeled data scarcity problem via FireMatch, a semi-supervised framework achieving 91.81\% accuracy on a custom-compiled fire video dataset with only 20\% labeled data. The method combines consistency regularization, adversarial distribution alignment, and a fairness loss that addresses class imbalance. The authors noted that confusing samples such as strong light sources and moving smoke caused significant performance degradation on the Firesense dataset, confirming that false-positive-inducing distractors are a dataset-level problem, not just a model-level one.
+
+Shashikala et al.~\cite{iot_nodefire} presented an IoT-based forest fire system using NodeMCU with temperature, humidity, and smoke sensors, complemented by machine learning for predictive analysis. While not a deep learning vision system, it highlights that multi-modal environmental context (temperature anomalies, humidity drops) can provide orthogonal evidence for fire presence---a principle that vision-language semantic verification also leverages, albeit through learned visual-textual associations rather than physical sensors.
+
+\textbf{Open Problems (flagged by the field):}
+\begin{itemize}[leftmargin=*, itemsep=2pt]
+    \item High false positive rates from smoke--fog--cloud confusion remain the primary barrier to trustworthy deployment; no method provides semantic-level disambiguation~\cite{spectral_smoke, cnn_vit_smoke, detectron2fire}.
+    \item Dataset limitations: existing benchmarks lack systematic inclusion of hard negatives (fog scenes, hazy mornings, dust storms) and are biased toward well-developed fires~\cite{firematch, cnn_fire_detection}.
+    \item No work has explored vision-language models (CLIP, BLIP) for fire/smoke verification despite their proven zero-shot visual reasoning capabilities~\cite{clip}.
+    \item Knowledge distillation for lightweight semi-supervised video fire classification is identified as future work by~\cite{firematch}.
+    \item Explainability and interpretability of fire detection models remain under-explored; only~\cite{spectral_smoke} provides visualization of learned spectral patterns.
+\end{itemize}
+
+% -------------------------------------------------------
+\section{Research Gap and Proposed Direction}
+\label{sec:gap}
+
+The literature reveals a clear and consistent gap. Every surveyed method---whether CNN-based~\cite{cnn_fire_detection}, YOLO-based~\cite{yolov8_smartcity}, Detectron2-based~\cite{detectron2fire}, transformer-augmented~\cite{cnn_vit_smoke}, temporal~\cite{bilstm_smoke}, semi-supervised~\cite{firematch}, or spectral~\cite{spectral_smoke}---treats fire and smoke detection as a purely visual pattern-matching problem. None incorporates semantic reasoning about what a detected region \emph{means} in context. The result is that all methods share the same dominant failure mode: high false positive rates from visually similar but semantically distinct phenomena (fog, clouds, haze, sunlight, dust).
+
+A secondary gap compounds the first. Methods that could reduce false positives through richer representations---transformers, temporal models, multi-spectral approaches---are computationally expensive and incompatible with edge deployment. Conversely, methods fast enough for edge deployment (YOLO variants) lack the representational capacity to distinguish smoke from fog.
+
+We identify additional gaps including the absence of hard-negative mining strategies for training (none of the reviewed works systematically augments datasets with fog, haze, and cloud scenes), and the complete absence of vision-language models from the fire detection literature despite their proven ability to perform zero-shot classification and visual question answering.
+
+Among these gaps, we select the false positive reduction problem as our primary objective because (a) it is the gap most consistently flagged by multiple independent research groups, (b) it has a concrete, measurable evaluation metric (false positive rate, precision), (c) it is tractable within a semester-length project via the specific mechanism of CLIP-based semantic verification, and (d) it directly addresses the deployment requirement of WWF's PTZ camera network, where a single false alarm can trigger costly field responses.
+
+Prior work detects fire and smoke with high recall using visual pattern matching but struggles with high false positive rates from visually similar non-fire phenomena; we therefore propose to investigate a two-stage pipeline where a YOLO-based detector generates candidate regions and a lightweight CLIP-based semantic verification module filters false positives by assessing whether detected regions are semantically consistent with fire or smoke versus confounders (fog, cloud, haze, sunlight).
+
+\paragraph{Research Question (formal):}
+Can the integration of a vision-language model (CLIP) as a post-detection semantic verification stage, applied to candidate regions from a YOLOv8 detector, significantly reduce the false positive rate of forest fire and smoke detection from PTZ camera imagery while maintaining real-time inference latency ($<$100\,ms) suitable for edge deployment?
+
+% -------------------------------------------------------
+\section{Benchmark, Evaluation, and Data Landscape}
+\label{sec:benchmarks}
+
+\paragraph{Datasets.}
+Table~\ref{tab:datasets} lists the key datasets identified from the literature. For our project, D-Fire and FASDD are the primary benchmarks due to their bounding-box annotations, multi-class labeling (fire, smoke, neither), and inclusion of challenging negative samples. The custom PTZ camera dataset from the WWF collaboration will supplement these with real-world forest monitoring footage containing fog, haze, and variable lighting conditions endemic to the deployment environment.
+
+\begin{table}[h]
+\caption{Key datasets in the field.}
+\label{tab:datasets}
+\vskip 0.1in
+\begin{center}
+\begin{small}
+\begin{tabular}{p{1.6cm} p{1.1cm} p{1.4cm} p{2.0cm}}
+\toprule
+\textbf{Dataset} & \textbf{Size} & \textbf{Modality} 
+& \textbf{Notes} \\
+\midrule
+D-Fire & 21.5k & RGB Images & Fire+smoke bbox; hard negatives included \\
+FASDD & 100k+ & RGB Images & Multi-source heterogeneous; indoor/outdoor/satellite \\
+DFS & 9.4k & RGB Images & Fire, smoke, \& ``other'' class for confounders \\
+Firesense & 39 vid. & RGB Video & Distractors: lights, moving smoke, clouds \\
+FLAME & 39k fr. & RGB/IR & UAV-based; forest fire aerial views \\
+\bottomrule
+\end{tabular}
+\end{small}
+\end{center}
+\end{table}
+
+\paragraph{Evaluation Protocol.}
+The community predominantly uses mean Average Precision (mAP) at IoU thresholds of 0.5 and 0.5:0.95 for detection tasks, and top-1 accuracy, precision, recall, and F1-score for classification tasks. For our false-positive-reduction objective, the critical metrics are \textbf{precision} (fraction of detections that are true positives) and \textbf{false positive rate} (FPR), evaluated specifically on subsets containing known confounders (fog scenes, hazy mornings, sunlit backgrounds). We will also report mAP@0.5 to ensure recall is not degraded by the verification module.
+
+\paragraph{Compute Context.}
+The surveyed papers used hardware ranging from NVIDIA RTX 3090 GPUs~\cite{firematch} and Tesla V100s to edge deployments on Raspberry Pi 3B+~\cite{detectron2fire}. Training was conducted on single or dual GPU setups. Our project will train on comparable university GPU resources and target inference on NVIDIA Jetson Nano for edge validation.
+
+% -------------------------------------------------------
+\section*{Experimental Design Considerations}
+\label{sec:expdesign}
+
+\begin{itemize}[leftmargin=*, itemsep=2pt]
+    \item \textbf{Baselines:} The proposed YOLO+CLIP pipeline must outperform (in precision / FPR) standalone YOLOv8 and standalone Detectron2 on the same test sets. YOLOv8 is the primary baseline because it represents the current best speed--accuracy trade-off for single-stage fire detection~\cite{yolov8_smartcity}. Detectron2 (Mask R-CNN)~\cite{detectron2fire} serves as the two-stage accuracy-oriented baseline. Both must be trained on identical data splits.
+    
+    \item \textbf{Ablations:} The key ablation isolates the CLIP verification module. Comparing YOLO-only vs. YOLO+CLIP on the same detection outputs directly measures the false-positive suppression contributed by semantic verification. Secondary ablations include: (a) varying the CLIP model size (ViT-B/32 vs. ViT-L/14) to quantify the accuracy--latency trade-off, (b) comparing CLIP zero-shot prompts (``a photo of smoke'' vs. ``a photo of fog'') against a fine-tuned CLIP linear probe, and (c) evaluating with and without hard-negative augmentation (synthetic fog overlays) in the training set.
+    
+    \item \textbf{Evaluation pitfalls:} The field has warned about several issues. First, dataset bias: models trained on predominantly daytime, clear-weather fire images perform poorly on foggy or nighttime scenes, and test sets must explicitly include these conditions~\cite{detectron2fire}. Second, metric gaming: reporting only mAP without precision/FPR on confounders masks the core deployment problem. Third, data leakage between train and test splits is a risk when images are extracted from video sequences---temporally adjacent frames must remain in the same split~\cite{firematch}.
+\end{itemize}
+
+% -------------------------------------------------------
+\section{Annotated Reading List}
+\label{sec:readings}
+
+\begin{thebibliography}{99}
+
+\bibitem{cnn_fire_detection}
+P.~Li and W.~Zhao.
+\newblock Image fire detection algorithms based on convolutional neural networks.
+\newblock \textit{Case Studies in Thermal Engineering}, 19:100625, 2020.
+\newblock \textit{What it does: Benchmarks four CNN-based object detectors (Faster R-CNN, R-FCN, SSD, YOLOv3) for image-level fire and smoke detection.}
+\newblock \textit{What it contributes: Demonstrates YOLOv3 achieves 83.7\% mAP at 28 FPS, confirming one-stage detectors as the best real-time option; provides a richly annotated dataset with disturbance and difficulty metadata.}
+\newblock \textit{Why it is here: Establishes that even well-performing detectors produce false positives from fire-like and smoke-like disturbances, directly motivating our semantic verification approach.}
+
+\bibitem{bilstm_smoke}
+Y.~Cao, F.~Yang, Q.~Tang, and X.~Lu.
+\newblock An Attention Enhanced Bidirectional LSTM for Early Forest Fire Smoke Recognition.
+\newblock \textit{IEEE Access}, 7:154732--154742, 2019.
+\newblock \textit{What it does: Proposes ABi-LSTM combining Inception V3, BiLSTM, and temporal attention for video-based forest fire smoke recognition from PTZ cameras.}
+\newblock \textit{What it contributes: Achieves 97.8\% accuracy with 4.4\% improvement over image-only models by exploiting temporal context; reduces false alarms through attention-weighted temporal aggregation.}
+\newblock \textit{Why it is here: Directly addresses our deployment scenario (PTZ cameras in forests) and demonstrates the value of temporal context for reducing false alarms, a principle we extend via semantic reasoning.}
+
+\bibitem{detectron2fire}
+A.~B.~Abdusalomov, B.~M.~S.~Islam, R.~Nasimov, M.~Mukhiddinov, and T.~K.~Whangbo.
+\newblock An Improved Forest Fire Detection Method Based on the Detectron2 Model and a Deep Learning Approach.
+\newblock \textit{Sensors}, 23(3):1512, 2023.
+\newblock \textit{What it does: Adapts the Detectron2 platform (Mask R-CNN, Panoptic FPN) for forest fire detection with a 348,600-image augmented dataset; deploys on Raspberry Pi 3B+.}
+\newblock \textit{What it contributes: Achieves 99.3\% precision by including non-fire images of sunlight and weather variations; identifies sunlight as the primary false positive source; demonstrates edge deployment feasibility.}
+\newblock \textit{Why it is here: Provides our two-stage detection baseline and concretely documents that dataset-level hard negatives alone are insufficient to eliminate false positives without semantic reasoning.}
+
+\bibitem{cnn_vit_smoke}
+Y.~Zheng, G.~Zhang, S.~Tan, Z.~Yang, D.~Wen, and H.~Xiao.
+\newblock A forest fire smoke detection model combining convolutional neural network and vision transformer.
+\newblock \textit{Frontiers in Forests and Global Change}, 6:1136969, 2023.
+\newblock \textit{What it does: Proposes SR-Net, a hybrid CNN + Lightweight ViT model for satellite-based forest fire smoke classification.}
+\newblock \textit{What it contributes: Achieves 96.9\% accuracy on Himawari-8 imagery, outperforming MobileNet, GoogLeNet, ResNet50, and AlexNet; Grad-CAM analysis reveals attention drift when clouds occlude smoke.}
+\newblock \textit{Why it is here: Demonstrates that even transformer-augmented models confuse smoke and clouds, establishing that the false positive problem persists across architectural paradigms and requires a fundamentally different approach.}
+
+\bibitem{spectral_smoke}
+L.~Zhao, J.~Liu, S.~Peters, J.~Li, N.~Mueller, and S.~Oliver.
+\newblock Learning Class-Specific Spectral Patterns to Improve Deep Learning Based Scene-Level Fire Smoke Detection from Multi-Spectral Satellite Imagery.
+\newblock \textit{arXiv preprint arXiv:2310.01711}, 2023.
+\newblock \textit{What it does: Introduces InAmp, a DL module that learns class-specific spectral patterns from multi-spectral bands to distinguish smoke from clouds and haze.}
+\newblock \textit{What it contributes: Improves CNN accuracy on Landsat imagery (81.79\% to 85.33\%) by exploiting IR and SWIR bands; provides interpretable deep-pseudo-band visualizations.}
+\newblock \textit{Why it is here: Directly addresses smoke--cloud confusion through spectral information, but is limited to multi-spectral satellite data; motivates our exploration of semantic (rather than spectral) disambiguation for RGB-only PTZ cameras.}
+
+\bibitem{firematch}
+Q.~Lin, Z.~Li, K.~Zeng, H.~Fan, W.~Li, and X.~Zhou.
+\newblock FireMatch: A Semi-Supervised Video Fire Detection Network Based on Consistency and Distribution Alignment.
+\newblock \textit{arXiv preprint arXiv:2311.05168}, 2023.
+\newblock \textit{What it does: Proposes a semi-supervised fire classification framework using consistency regularization, adversarial distribution alignment, and a fairness loss for video data.}
+\newblock \textit{What it contributes: Achieves 91.81\% accuracy with only 20\% labels; identifies that confusing samples (strong lights, moving smoke) severely degrade performance on Firesense; suggests knowledge distillation as future work.}
+\newblock \textit{Why it is here: Demonstrates that labeled data scarcity and confounding visual patterns are coupled problems; its fairness loss for class imbalance is relevant to our pipeline where fire events are rare relative to non-fire frames.}
+
+\bibitem{yolov8_smartcity}
+Madhukara~S and D.~R.~P.~R.
+\newblock An Improved Fire Detection Approach Based On YOLO-v8 for Smart Cities.
+\newblock \textit{IJARSCT}, 4(3):358--361, 2024.
+\newblock \textit{What it does: Applies YOLOv8 within a smart-city IoT framework for real-time fire detection across fog, cloud, and IoT layers.}
+\newblock \textit{What it contributes: Reports 97.1\% precision across all classes; proposes multi-layer smart-city architecture integrating edge detection with cloud analytics.}
+\newblock \textit{Why it is here: Represents the current YOLOv8 baseline for fire detection and confirms that reduced false alarms are an explicit design goal, though no semantic verification is used.}
+
+\bibitem{iot_nodefire}
+S.~V.~Shashikala, S.~S.~Gowda, Shafiyamariyam, S.~R., and S.~R.
+\newblock Forest Fire Prediction and Detection using NodeMCU with IoT.
+\newblock \textit{Grenze International Journal of Engineering and Technology}, 10(2), 2024.
+\newblock \textit{What it does: Implements an IoT-based system using NodeMCU with temperature, humidity, and smoke sensors for forest fire prediction.}
+\newblock \textit{What it contributes: Demonstrates that multi-modal environmental data (temperature anomalies, humidity drops) provides orthogonal fire evidence beyond visual cues.}
+\newblock \textit{Why it is here: Motivates the principle that fire detection benefits from context beyond raw pixel patterns; CLIP-based semantic verification is the vision-only analog of multi-sensor contextual reasoning.}
+
+\bibitem{redmon2016yolo}
+J.~Redmon, S.~Divvala, R.~Girshick, and A.~Farhadi.
+\newblock You Only Look Once: Unified, Real-Time Object Detection.
+\newblock \textit{IEEE CVPR}, 2016.
+\newblock \textit{What it does: Introduces the YOLO paradigm---single-pass object detection treating localization and classification as a single regression problem.}
+\newblock \textit{What it contributes: Establishes the foundational architecture for all real-time fire detection systems surveyed; enables 45+ FPS inference.}
+\newblock \textit{Why it is here: YOLO is the backbone of our proposed pipeline's first stage; understanding its design informs how we attach the semantic verification module.}
+
+\bibitem{carion2020detr}
+N.~Carion, F.~Massa, G.~Synnaeve, N.~Usunier, A.~Kirillov, and S.~Zagoruyko.
+\newblock End-to-End Object Detection with Transformers (DETR).
+\newblock \textit{ECCV}, 2020.
+\newblock \textit{What it does: Reformulates object detection as a set prediction problem using a transformer encoder-decoder with bipartite matching loss.}
+\newblock \textit{What it contributes: Eliminates hand-designed components (NMS, anchors); demonstrates global attention over the full image improves detection of small and occluded objects.}
+\newblock \textit{Why it is here: DETR and its variants (Deformable DETR) are the transformer-based detection alternatives we compare against; the project topic explicitly requires understanding YOLO + Transformer integration.}
+
+\bibitem{clip}
+A.~Radford, J.~W.~Kim, C.~Hallacy, A.~Ramesh, G.~Goel, S.~Agarwal, G.~Sastry, et al.
+\newblock Learning Transferable Visual Models From Natural Language Supervision.
+\newblock \textit{ICML}, 2021.
+\newblock \textit{What it does: Trains a dual-encoder (image + text) model on 400M image-text pairs, enabling zero-shot image classification via natural language prompts.}
+\newblock \textit{What it contributes: Demonstrates that vision-language alignment enables semantic reasoning about image content without task-specific fine-tuning.}
+\newblock \textit{Why it is here: CLIP is the core component of our proposed semantic verification module; its zero-shot capability allows prompting with ``smoke in a forest'' vs. ``fog in a forest'' to discriminate visually similar but semantically distinct scenes.}
+
+\bibitem{dfire_dataset}
+P.~V.~A.~B.~de~Ven\^{a}ncio, A.~C.~Lisboa, and A.~V.~Barbosa.
+\newblock An automatic fire detection system based on deep convolutional neural networks for low-power, resource-constrained devices.
+\newblock \textit{Neural Computing and Applications}, 2022.
+\newblock \textit{What it does: Introduces the D-Fire dataset (21,527 images, fire+smoke bounding boxes) and evaluates lightweight CNNs for resource-constrained deployment.}
+\newblock \textit{What it contributes: Provides the largest publicly available fire+smoke detection benchmark with challenging negative samples including lamp lights and sun glare.}
+\newblock \textit{Why it is here: D-Fire is our primary evaluation benchmark; its inclusion of hard negatives makes it suitable for measuring false positive reduction.}
+
+\end{thebibliography}
+
+% -------------------------------------------------------
+\section{Preliminary Implementation Resources}
+\label{sec:resources}
+
+\begin{itemize}[leftmargin=*, itemsep=2pt]
+    \item \url{https://github.com/ultralytics/ultralytics}
+          Official YOLOv8/v11 repository. Primary detection backbone; includes training scripts, export to ONNX/TensorRT for edge deployment, and benchmark evaluation tools.
+    \item \url{https://github.com/openai/CLIP}
+          Official CLIP repository. Provides pre-trained ViT-B/32 and ViT-L/14 encoders for zero-shot classification; baseline for our semantic verification module.
+    \item \url{https://github.com/gaia-solutions-on-demand/DFireDataset}
+          D-Fire dataset (21,527 images). Primary benchmark for evaluating false positive reduction; includes bounding-box annotations in YOLO format.
+    \item \url{https://github.com/facebookresearch/detectron2}
+          Detectron2 platform. Two-stage detection baseline (Mask R-CNN); reference implementation used by Abdusalomov et al.
+    \item \url{https://github.com/siyuanwu/DFS-FIRE-SMOKE-Dataset}
+          DFS dataset (9,462 images) with fire, smoke, and ``other'' class for confounders. Useful for training models to distinguish true fire/smoke from visually similar objects.
+    \item \url{https://github.com/mlfoundations/open_clip}
+          OpenCLIP: open-source CLIP training framework with additional pre-trained checkpoints. Enables fine-tuning CLIP on domain-specific fire/smoke text-image pairs.
+    \item \url{https://github.com/facebookresearch/detr}
+          Official DETR repository. Transformer-based detection reference for comparison; relevant to the project requirement of understanding YOLO + Transformer integration.
+\end{itemize}
+
+\end{document}

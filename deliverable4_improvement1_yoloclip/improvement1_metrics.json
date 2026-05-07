@@ -1,0 +1,106 @@
+{
+  "deliverable": "First Improvement: YOLOv8 + CLIP Semantic Verification",
+  "dataset": "D-Fire",
+  "baseline_weights": "/kaggle/working/yolov8n_dfire_best.pt",
+  "main_configuration": {
+    "clip_model": "ViT-B/32",
+    "crop_margin": 0.2,
+    "conf": 0.25,
+    "iou": 0.45,
+    "prompt_bank": {
+      "fire": 5,
+      "smoke": 5,
+      "confounder": 12
+    }
+  },
+  "yolo_only_reference": {
+    "mAP50": 0.7613774031866156,
+    "mAP50_95": 0.43391555258389725,
+    "mean_precision": 0.7696309881399431,
+    "mean_recall": 0.6970910670002295
+  },
+  "hard_negative_subset": {
+    "n_images": 2005,
+    "yolo_only_fp_imgs": 49,
+    "yolo_only_fpr": 0.024438902743142144,
+    "yolo_clip_fp_imgs": 9,
+    "yolo_clip_fpr": 0.004488778054862843,
+    "boxes_filtered": 46,
+    "mean_latency_ms": 14.022379401497725
+  },
+  "full_test_set": {
+    "yolo": {
+      "ap50_smoke": 0.6948293172257434,
+      "precision_smoke": 0.8074041427941825,
+      "recall_smoke": 0.7913606911447084,
+      "ap50_fire": 0.5791710207045309,
+      "precision_fire": 0.6888086642599278,
+      "recall_fire": 0.6629603891591382,
+      "mAP50": 0.6370001689651371,
+      "mean_precision": 0.7481064035270552,
+      "mean_recall": 0.7271605401519233
+    },
+    "clip": {
+      "ap50_smoke": 0.35131209639485006,
+      "precision_smoke": 0.8326653306613226,
+      "recall_smoke": 0.358963282937365,
+      "ap50_fire": 0.42216161074307107,
+      "precision_fire": 0.7244897959183674,
+      "recall_fire": 0.46872828353022933,
+      "mAP50": 0.3867368535689606,
+      "mean_precision": 0.7785775632898451,
+      "mean_recall": 0.41384578323379717
+    },
+    "n_gt": {
+      "0": 2315,
+      "1": 2878
+    },
+    "n_images": 4306,
+    "mean_lat_ms": 26.721678088719358,
+    "p95_lat_ms": 49.6033855006317
+  },
+  "ablation_clip_size": {
+    "ViT-B/32": {
+      "fpr": 0.004488778054862843,
+      "mean_lat_ms": 14.022379401497725
+    },
+    "ViT-L/14": {
+      "fpr": 0.006483790523690773,
+      "mean_lat_ms": 14.578796517180262
+    }
+  },
+  "ablation_crop_margin": {
+    "0.00": {
+      "fpr": 0.004488778054862843,
+      "mean_lat_ms": 13.473875898760756
+    },
+    "0.20": {
+      "fpr": 0.004488778054862843,
+      "mean_lat_ms": 13.440650115682134
+    },
+    "0.40": {
+      "fpr": 0.004488778054862843,
+      "mean_lat_ms": 13.449029092784679
+    },
+    "0.60": {
+      "fpr": 0.005486284289276808,
+      "mean_lat_ms": 13.50143436358844
+    }
+  },
+  "ablation_prompt_bank": {
+    "full": {
+      "fp_imgs": 9,
+      "fpr": 0.004488778054862843
+    },
+    "minimal": {
+      "fp_imgs": 43,
+      "fpr": 0.02144638403990025
+    }
+  },
+  "latency_bench": {
+    "yolo_mean_ms": 13.759583170012775,
+    "clip_mean_ms": 9.622445150107524,
+    "total_mean_ms": 25.544803440116084,
+    "total_p95_ms": 52.21558045122947
+  }
+}
